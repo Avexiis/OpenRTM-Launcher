@@ -1,7 +1,12 @@
 #include "gui.hpp"
 
 #include "openrtm_icon_rgba.hpp"
+#include "launcher_log.hpp"
 #include "launcher_services.hpp"
+
+#ifdef _WIN32
+#include <FL/platform.H>
+#endif
 
 #include <FL/Fl.H>
 #include <FL/Fl_Box.H>
@@ -20,6 +25,8 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <sstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
@@ -225,6 +232,68 @@ std::string jarSize(const std::uintmax_t bytes)
     return " - " + std::to_string(mebibytes) + " MiB";
 }
 
+#ifdef _WIN32
+void makeNativeWindowVisible(Fl_Window& window)
+{
+    const HWND handle = fl_xid(&window);
+    if (handle == nullptr)
+    {
+        const DWORD error = GetLastError();
+        writeLauncherLog("Windows failed to create the native launcher window (error "
+            + std::to_string(error) + ")");
+        throw std::runtime_error("Windows could not create the launcher window (error "
+            + std::to_string(error) + ")");
+    }
+
+    ShowWindow(handle, SW_RESTORE);
+
+    RECT bounds{};
+    bool positioned = false;
+    if (GetWindowRect(handle, &bounds))
+    {
+        MONITORINFO monitorInfo{};
+        monitorInfo.cbSize = sizeof(monitorInfo);
+        const HMONITOR monitor = MonitorFromWindow(handle, MONITOR_DEFAULTTOPRIMARY);
+        if (monitor != nullptr && GetMonitorInfoW(monitor, &monitorInfo))
+        {
+            const LONG width = bounds.right - bounds.left;
+            const LONG height = bounds.bottom - bounds.top;
+            const LONG workWidth = monitorInfo.rcWork.right - monitorInfo.rcWork.left;
+            const LONG workHeight = monitorInfo.rcWork.bottom - monitorInfo.rcWork.top;
+            const int left = monitorInfo.rcWork.left + std::max<LONG>(0, (workWidth - width) / 2);
+            const int top = monitorInfo.rcWork.top + std::max<LONG>(0, (workHeight - height) / 2);
+            positioned = SetWindowPos(handle, HWND_TOP, left, top, 0, 0,
+                SWP_NOSIZE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW) != FALSE;
+        }
+    }
+    if (!positioned)
+    {
+        SetWindowPos(handle, HWND_TOP, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
+    }
+
+    BringWindowToTop(handle);
+    SetForegroundWindow(handle);
+    UpdateWindow(handle);
+    window.wait_for_expose();
+    Fl::flush();
+
+    GetWindowRect(handle, &bounds);
+    std::ostringstream details;
+    details << "Native window handle=" << static_cast<const void*>(handle)
+            << " visible=" << (IsWindowVisible(handle) ? "yes" : "no")
+            << " iconic=" << (IsIconic(handle) ? "yes" : "no")
+            << " bounds=" << bounds.left << ',' << bounds.top << '-'
+            << bounds.right << ',' << bounds.bottom;
+    writeLauncherLog(details.str());
+
+    if (!IsWindow(handle) || !IsWindowVisible(handle))
+    {
+        throw std::runtime_error("Windows created the launcher window but could not display it");
+    }
+}
+#endif
+
 class LauncherUi final
 {
 public:
@@ -243,7 +312,7 @@ public:
         icon_.reset(iconSource_.copy(64, 64));
         auto* logo = new Fl_Box(28, 18, 64, 64);
         logo->image(icon_.get());
-        window_.icon(icon_.get());
+        window_.icon(&iconSource_);
 
         auto* title = new Fl_Box(108, 25, 410, 31, "OpenRTM");
         styleLabel(title, 24, text, FL_HELVETICA_BOLD);
@@ -336,9 +405,17 @@ public:
         }
     }
 
-    int run()
+    int run(const int argc, char* argv[])
     {
-        window_.show();
+        writeLauncherLog("Showing the launcher window");
+        window_.show(argc, argv);
+#ifdef _WIN32
+        makeNativeWindowVisible(window_);
+#else
+        window_.wait_for_expose();
+        Fl::flush();
+#endif
+        writeLauncherLog("Launcher window is visible; entering the GUI event loop");
         beginCheck();
         return Fl::run();
     }
@@ -430,6 +507,7 @@ private:
                 if (!cancelling_.load())
                 {
                     const std::string message = error.what();
+                    writeLauncherLog("Operation failed: " + message);
                     post([this, message]() { showFailure(message); });
                 }
             }
@@ -438,6 +516,7 @@ private:
 
     void beginCheck()
     {
+        writeLauncherLog("Checking Java and OpenRTM status");
         setStatus("Checking your system", "Looking for Java and the latest OpenRTM version.",
             mutedText);
         progress_->hide();
@@ -573,6 +652,14 @@ private:
     void applySnapshot(LauncherSnapshot snapshot)
     {
         snapshot_ = std::move(snapshot);
+        std::string logMessage = std::string("Status check complete: Java=")
+            + (snapshot_.javaAvailable ? "available" : "missing")
+            + ", JAR=" + (snapshot_.jarAvailable ? "available" : "missing");
+        if (!snapshot_.updateError.empty())
+        {
+            logMessage += ", update error: " + snapshot_.updateError;
+        }
+        writeLauncherLog(logMessage);
         setBusy(false);
         progress_->hide();
 
@@ -764,8 +851,9 @@ private:
 };
 }
 
-int runGraphicalLauncher()
+int runGraphicalLauncher(const int argc, char* argv[])
 {
+    writeLauncherLog("Initializing the graphical launcher");
 #ifndef _WIN32
     Fl::set_fonts(nullptr);
 #endif
@@ -777,6 +865,6 @@ int runGraphicalLauncher()
     Fl::lock();
 
     LauncherUi application;
-    return application.run();
+    return application.run(argc, argv);
 }
 }

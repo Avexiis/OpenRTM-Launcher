@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(OpenRTMLauncher VERSION 1.0.0 LANGUAGES C CXX)
+project(OpenRTMLauncher VERSION 1.0.2 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -11,7 +11,9 @@ option(OPENRTM_BUILD_TESTS "Build launcher tests" ON)
 include(FetchContent)
 
 set(openrtm_icon_source "${CMAKE_CURRENT_SOURCE_DIR}/assets/openrtm.png")
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${openrtm_icon_source}")
+set(openrtm_windows_manifest "${CMAKE_CURRENT_SOURCE_DIR}/resources/openrtm.manifest")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${openrtm_icon_source}" "${openrtm_windows_manifest}")
 
 find_program(OPENRTM_IMAGEMAGICK_EXECUTABLE NAMES magick convert)
 if(NOT OPENRTM_IMAGEMAGICK_EXECUTABLE)
@@ -59,7 +61,9 @@ openrtm_embed_binary("${openrtm_icon_rgba}" "${openrtm_icon_rgba_header}"
     openrtm_icon_rgba)
 openrtm_embed_binary("${openrtm_icon_png}" "${openrtm_icon_png_header}"
     openrtm_icon_png)
-file(WRITE "${openrtm_windows_resource}" "101 ICON \"${openrtm_icon_ico}\"\n")
+file(WRITE "${openrtm_windows_resource}"
+    "101 ICON \"${openrtm_icon_ico}\"\n"
+    "1 24 \"${openrtm_windows_manifest}\"\n")
 
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(FLTK_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
@@ -123,7 +127,8 @@ endif()
 add_library(openrtm_core STATIC src/core.cpp)
 target_include_directories(openrtm_core PUBLIC include)
 
-add_executable(openrtm main.cpp src/gui.cpp src/launcher.cpp src/http_client.cpp
+add_executable(openrtm main.cpp src/gui.cpp src/launcher.cpp src/launcher_log.cpp
+    src/http_client.cpp
     "${openrtm_icon_rgba_header}" "${openrtm_icon_png_header}")
 target_include_directories(openrtm PRIVATE include src "${openrtm_generated_dir}")
 target_link_libraries(openrtm PRIVATE openrtm_core fltk::fltk)
@@ -138,12 +143,16 @@ else()
 endif()
 
 if(WIN32)
-    target_sources(openrtm PRIVATE "${openrtm_windows_resource}" "${openrtm_icon_ico}")
+    target_sources(openrtm PRIVATE "${openrtm_windows_resource}"
+        "${openrtm_icon_ico}" "${openrtm_windows_manifest}")
     target_compile_definitions(openrtm PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(openrtm PRIVATE winhttp shell32 user32)
     set_target_properties(openrtm PROPERTIES OUTPUT_NAME "OpenRTM_Launcher" WIN32_EXECUTABLE TRUE)
     if(MINGW)
-        target_link_options(openrtm PRIVATE -static -static-libgcc -static-libstdc++)
+        # Use the CRT shipped in Windows itself. This avoids UCRT API-set loader
+        # dependencies while keeping GCC, libstdc++, and winpthreads static.
+        target_link_options(openrtm PRIVATE -mcrtdll=msvcrt-os
+            -static -static-libgcc -static-libstdc++)
     endif()
 else()
     set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)

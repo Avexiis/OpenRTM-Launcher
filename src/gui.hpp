@@ -2,5 +2,5 @@
 
 namespace openrtm
 {
-int runGraphicalLauncher();
+int runGraphicalLauncher(int argc, char* argv[]);
 }

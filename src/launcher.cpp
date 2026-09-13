@@ -2,6 +2,7 @@
 
 #include "gui.hpp"
 #include "http_client.hpp"
+#include "launcher_log.hpp"
 #include "launcher_services.hpp"
 #include "openrtm/core.hpp"
 
@@ -1059,7 +1060,13 @@ void prepareLatestForGui(const bool forceUpdate, const StatusCallback& status,
 #else
     (void)created;
 #endif
-    const StatusCallback report = status ? status : [](const std::string&) {};
+    const StatusCallback report = [status](const std::string& message) {
+        writeLauncherLog(message);
+        if (status)
+        {
+            status(message);
+        }
+    };
     UpdateLock lock(paths.dataDirectory / ".update.lock");
     ensureLatestJar(paths, forceUpdate, report, progress);
 }
@@ -1076,12 +1083,15 @@ void launchForGui()
     {
         throw std::runtime_error("OpenRTM.jar is not installed");
     }
+    writeLauncherLog("Starting OpenRTM.jar");
     launchJavaDetached(*java, paths);
 }
 
 void uninstallForGui()
 {
+    writeLauncherLog("Removing OpenRTM application data");
     uninstall(launcherPaths(), true);
+    disableLauncherLog();
 }
 
 void installDesktopForGui()
@@ -1126,9 +1136,11 @@ int runLauncher(const int argc, char* argv[])
 {
     try
     {
+        const Paths paths = launcherPaths();
+        initializeLauncherLog(paths.dataDirectory);
         if (argc == 1)
         {
-            return runGraphicalLauncher();
+            return runGraphicalLauncher(argc, argv);
         }
 
         const Options options = parseOptions(argc, argv);
@@ -1143,10 +1155,11 @@ int runLauncher(const int argc, char* argv[])
             return 0;
         }
 
-        const Paths paths = launcherPaths();
         if (options.command == Command::uninstall)
         {
+            writeLauncherLog("Removing OpenRTM application data");
             uninstall(paths, options.assumeYes);
+            disableLauncherLog();
             return 0;
         }
         if (options.command == Command::install)
@@ -1154,6 +1167,7 @@ int runLauncher(const int argc, char* argv[])
 #ifdef _WIN32
             throw std::runtime_error("--install is only needed on Linux; run the EXE directly");
 #else
+            writeLauncherLog("Installing Linux desktop integration");
             installDesktop();
             return 0;
 #endif
@@ -1162,11 +1176,13 @@ int runLauncher(const int argc, char* argv[])
         const auto java = findJava();
         if (!java)
         {
+            writeLauncherLog("JDK 17 or newer was not found");
             reportMissingJava();
             return 2;
         }
         if (options.command == Command::check)
         {
+            writeLauncherLog("Checking Java and OpenRTM status from the command line");
             return checkStatus(paths, *java);
         }
 
@@ -1200,6 +1216,7 @@ int runLauncher(const int argc, char* argv[])
         }
         if (!options.noLaunch)
         {
+            writeLauncherLog("Starting OpenRTM.jar");
             launchJava(*java, paths, options.jarArguments);
         }
         return 0;
@@ -1207,6 +1224,7 @@ int runLauncher(const int argc, char* argv[])
     catch (const std::exception& error)
     {
         const std::string message = std::string("OpenRTM Launcher: ") + error.what();
+        writeLauncherLog(message);
         std::cerr << message << '\n';
 #ifdef _WIN32
         showErrorDialog(message);

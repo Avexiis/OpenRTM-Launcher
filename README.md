@@ -10,6 +10,14 @@ OpenRTM Launcher is the installer and update manager for [OpenRTM](https://githu
 
 No launcher installation or extra DLLs are required.
 
+### If the launcher does not appear
+
+Open the newest launcher again, then press `Win + R`, enter
+`%USERPROFILE%\.openrtm`, and open `launcher_log.log`. Include that file when
+reporting the problem. If no log was created, also check **Windows Security >
+Protection history** in case Windows blocked the downloaded application before
+it could start.
+
 ## Linux
 
 Download the `openrtm` file, then make it executable and open it:
@@ -35,7 +43,7 @@ After installing Java, return to the launcher and select **Check for updates**.
 ## Updates and files
 
 Each time you launch OpenRTM, the launcher checks the official
-[OpenRTM release repository](https://github.com/Avexiis/OpenRTM).
+[OpenRTM release repository](https://github.com/Avexiis/OpenRTM_Production).
 When a newer version is available, **Update & Launch** downloads it before
 starting OpenRTM. If GitHub is temporarily unavailable, an already downloaded
 version can still be launched.
@@ -44,6 +52,9 @@ OpenRTM, its version information, and its settings are kept in:
 
 - Windows: `%USERPROFILE%\.openrtm`
 - Linux: `~/.openrtm`
+
+The launcher writes its latest activity to `launcher_log.log` in this folder on
+both operating systems.
 
 ## Remove OpenRTM
 
