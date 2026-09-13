@@ -1,8 +1,6 @@
 # OpenRTM Launcher
 
-OpenRTM Launcher is the easiest way to start and keep OpenRTM up to date on
-Windows and Linux. The launcher is a standalone native application, so it opens
-even when Java has not been installed yet.
+OpenRTM Launcher is the installer and update manager for [OpenRTM](https://github.com/Avexiis/OpenRTM)
 
 ## Windows
 
@@ -37,7 +35,7 @@ After installing Java, return to the launcher and select **Check for updates**.
 ## Updates and files
 
 Each time you launch OpenRTM, the launcher checks the official
-[OpenRTM release repository](https://github.com/Avexiis/OpenRTM_Production).
+[OpenRTM release repository](https://github.com/Avexiis/OpenRTM).
 When a newer version is available, **Update & Launch** downloads it before
 starting OpenRTM. If GitHub is temporarily unavailable, an already downloaded
 version can still be launched.
